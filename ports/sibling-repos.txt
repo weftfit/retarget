@@ -1,0 +1,7 @@
+# weftfit cluster wiring — one component's sink feeds another's source.
+# retarget defines the mesh_source / mesh_sink port contracts; these repos
+# implement them (adapters) or drive the core (cli).
+weftfit/stage    # adapter: mesh_source + mesh_sink over OpenUSD (via stage_runtime)
+weftfit/obj      # adapter: mesh_source + mesh_sink over Wavefront OBJ
+weftfit/cli      # driving adapter: Elixir + Fine NIF + Burrito; wires source->core->sink
+weftfit/viewer   # adapter (planned): mesh_sink for QA visualization
