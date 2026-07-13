@@ -10,12 +10,33 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(weftfit_ports STATIC core/mesh.cpp)
 target_include_directories(weftfit_ports PUBLIC ports)
 
-# --- core layer (TODO) -----------------------------------------------------
-# The garment-retargeting solve (core/garment/optimize.cpp) uses PolyFEM as its
-# computational substrate. To build the core standalone:
-#   1. Replace optimize.cpp's inline read_/write_mesh_with_groups + cfusd_* calls
-#      with wf_mesh_source / wf_mesh_sink port calls (de-entangle I/O).
-#   2. FetchContent PolyFEM (the V-Sekai fork) and link the garment sources.
-#   3. Add core/spec fixtures + tests.
-# Until then the authoritative solve lives in V-Sekai-fire/cloth-fit.
-option(WEFTFIT_BUILD_CORE "Build the PolyFEM-backed retarget core (WIP)" OFF)
+# --- core layer ------------------------------------------------------------
+# The garment-retargeting solve uses PolyFEM as its computational substrate.
+# Behind WEFTFIT_BUILD_CORE (default OFF, so the ports lib builds fast on its own),
+# vendor *base PolyFEM*: the cloth-fit fork with the garment domain gated OFF.
+# Phase 1 (cloth-fit) made garment optional via POLYFEM_WITH_GARMENT, so OFF yields
+# a garment-free `polyfem` target — the core links it as a math engine, and no
+# garment code lives in the substrate (the purist cut).
+#
+# Remaining (tracked in EXTRACTION.md):
+#   step 2  extract_core     — add core/garment sources, link polyfem + weftfit_ports
+#   step 3  build_core        — compile the core standalone against base PolyFEM
+#   step 4  refactor_io       — optimize.cpp inline I/O -> wf_mesh_source/_sink ports
+option(WEFTFIT_BUILD_CORE "Build the PolyFEM-backed retarget core (fetches base PolyFEM)" OFF)
+
+if(WEFTFIT_BUILD_CORE)
+  include(FetchContent)
+
+  # base PolyFEM = cloth-fit @ the commit where POLYFEM_WITH_GARMENT landed, garment OFF.
+  set(POLYFEM_WITH_GARMENT OFF CACHE BOOL "base PolyFEM carries no garment code" FORCE)
+  FetchContent_Declare(base_polyfem
+    GIT_REPOSITORY https://github.com/V-Sekai-fire/cloth-fit.git
+    GIT_TAG        d4ad4283f58700310eaa22aede33c3de06420cdd  # Phase 1: garment gated
+  )
+  # Provides the garment-free `polyfem` target (its own bin/tests stay off as a
+  # subproject via POLYFEM_TOPLEVEL_PROJECT). Heavy: pulls PolyFEM's dep stack.
+  FetchContent_MakeAvailable(base_polyfem)
+
+  # core/garment sources + `add_library(weftfit_core ... )` linking `polyfem` +
+  # `weftfit_ports` are added in step 2/3.
+endif()
