@@ -29,6 +29,22 @@ if(WEFTFIT_BUILD_CORE)
 
   # base PolyFEM = cloth-fit @ the commit where POLYFEM_WITH_GARMENT landed, garment OFF.
   set(POLYFEM_WITH_GARMENT OFF CACHE BOOL "base PolyFEM carries no garment code" FORCE)
+
+  # Match cloth-fit's `cloth_fit.build_native` PolyFEM option set so the fetched
+  # substrate builds everywhere: Eigen fallback solvers (no MKL/external), OpenVDB
+  # serialization off, static TBB. NOTE: the pinned OpenVDB still needs a static
+  # oneTBB 2021.9.0 — provide it with -DTBB_ROOT=<install> -DCMAKE_PREFIX_PATH=...
+  # (cloth-fit builds it from source in build_native's build_tbb step).
+  set(OPENVDB_USE_DELAYED_LOADING OFF CACHE BOOL "" FORCE)
+  set(USE_BLOSC     OFF CACHE BOOL "" FORCE)
+  set(USE_ZLIB      OFF CACHE BOOL "" FORCE)
+  set(USE_IMATH_HALF OFF CACHE BOOL "" FORCE)
+  set(TBB_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+  foreach(_solver MKL CHOLMOD UMFPACK SUPERLU HYPRE AMGCL SPECTRA)
+    set(POLYSOLVE_WITH_${_solver} OFF CACHE BOOL "" FORCE)
+  endforeach()
+
   FetchContent_Declare(base_polyfem
     GIT_REPOSITORY https://github.com/V-Sekai-fire/cloth-fit.git
     GIT_TAG        d4ad4283f58700310eaa22aede33c3de06420cdd  # Phase 1: garment gated
@@ -37,6 +53,23 @@ if(WEFTFIT_BUILD_CORE)
   # subproject via POLYFEM_TOPLEVEL_PROJECT). Heavy: pulls PolyFEM's dep stack.
   FetchContent_MakeAvailable(base_polyfem)
 
-  # core/garment sources + `add_library(weftfit_core ... )` linking `polyfem` +
-  # `weftfit_ports` are added in step 2/3.
+  # --- weftfit_core: the garment domain over garment-free base PolyFEM ---------
+  # These are exactly the sources cloth-fit gates OUT of libpolyfem when
+  # POLYFEM_WITH_GARMENT=OFF. Building them here, linked against that garment-free
+  # `polyfem`, is the purist cut compiling: the garment core over a substrate that
+  # carries no garment code. The sources reference <polyfem/...> throughout, which
+  # resolve via polyfem's PUBLIC include; USD stays off so the inline I/O uses OBJ
+  # (the port refactor in step 4 removes it entirely).
+  set(_pf "${base_polyfem_SOURCE_DIR}/src/polyfem")
+  add_library(weftfit_core STATIC
+    "${_pf}/garment/optimize.cpp"
+    "${_pf}/garment/GarmentNLProblem.cpp"
+    "${_pf}/solver/forms/garment_forms/GarmentForm.cpp"
+    "${_pf}/solver/forms/garment_forms/GarmentALForm.cpp"
+    "${_pf}/solver/forms/garment_forms/CurveConstraintForm.cpp"
+    "${_pf}/solver/forms/garment_forms/CurveCenterTargetForm.cpp"
+    "${_pf}/solver/forms/garment_forms/FitForm.cpp"
+  )
+  target_link_libraries(weftfit_core PUBLIC polyfem weftfit_ports)
+  target_compile_features(weftfit_core PUBLIC cxx_std_17)
 endif()
